@@ -18,6 +18,9 @@ data:
  how to create power generation prediction?
 '''
 
+# TODO demand prediction?
+# TODO power generation prediction?
+
 
 def read_files():
     mypath = 'data/july2021/'
@@ -41,7 +44,7 @@ def read_files():
     windpower_df.rename(columns={'power (kW)': 'Power (W)'}, inplace=True)
 
     # convert to W
-    windpower_df['Power (kW)'] = (windpower_df['Power (W)'] * 1000)
+    windpower_df['Power (W)'] = (windpower_df['Power (W)'] * 1000)
     # drop unneeded columns
     windpower_df = windpower_df[['Date', 'Power (W)']]
 
@@ -53,10 +56,17 @@ def read_files():
     diesel_df = diesel_df.loc[diesel_df['Date'].isin(battery_df['Date'])].sort_values(by='Date').reset_index(drop=True)
     battery_df = battery_df.sort_values(by='Date').reset_index(drop=True)
 
-    print_df(powergen_df, 'powergen')
-    print_df(demand_df, 'demand')
-    print_df(diesel_df, 'diesel')
-    print_df(battery_df, 'battery')
+    demand_df.rename(columns={'totalRealPower (W)': 'Power (W)'}, inplace=True)
+    diesel_df.rename(columns={'totalRealPower (W)': 'Power (W)'}, inplace=True)
+
+    # print_df(powergen_df, 'powergen')
+    # print_df(demand_df, 'demand')
+    # print_df(diesel_df, 'diesel')
+    # print_df(battery_df, 'battery')
+
+    # powervals = diesel_df[diesel_df['totalRealPower (W)'] != 0]['totalRealPower (W)']
+    # avgdieseloutput = powervals.mean()
+    # print(avgdieseloutput)
 
     return {'renewable': powergen_df,
             'diesel': diesel_df,
