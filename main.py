@@ -54,7 +54,7 @@ def main():
 
 
 def r(s: State, a):
-    # if generator is left on or we are turning it on
+    # if generator is left on
     if s.is_generator_on:
         return GENERATOR_COST
     else:
