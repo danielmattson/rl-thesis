@@ -34,6 +34,17 @@ class State:
 
 
 def main():
+    init_vensim()
+    # sim_rl()
+
+
+def init_vensim():
+    pass
+
+
+
+
+def sim_rl():
     data_dict: Dict[str, pd.DataFrame] = read_csv.read_files()
     global T
     T = len(data_dict['demand'])

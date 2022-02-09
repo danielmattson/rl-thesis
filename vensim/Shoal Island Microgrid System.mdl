@@ -1,0 +1,1270 @@
+{UTF-8}
+Cumulative wind generation= INTEG (
+	Wind Generation,
+		0
+		)
+	~	
+	~		|
+
+Cumulative PV generation= INTEG (
+	PV Generation,
+		0)
+	~	
+	~		|
+
+Maintenance inflow costs=
+	Maintenance
+	~	
+	~		|
+
+Battery inflow costs=
+	Battery replacement cost
+	~	
+	~		|
+
+Cumulative panel costs= INTEG (
+	Panel inflow costs,
+		0)
+	~	
+	~		|
+
+Cumulative diesel costs= INTEG (
+	Diesel inflow costs,
+		0)
+	~	
+	~		|
+
+Panel inflow costs=
+	Panel replacement cost
+	~	
+	~		|
+
+Cumulative maintenance costs= INTEG (
+	Maintenance inflow costs,
+		0)
+	~	
+	~		|
+
+Diesel inflow costs=
+	Diesel costs
+	~	
+	~		|
+
+Cumulative battery costs= INTEG (
+	Battery inflow costs,
+		0)
+	~	
+	~		|
+
+Panel LCA=
+	Panel life cycle CO2 emissions*Number of solar panel installed*Time/(Panel lifespan*\
+		365*24*60)
+	~	
+	~		|
+
+Battery total capacity=
+	Number of Batteries*Battery unit capacity
+	~	
+	~	Total battery capacity inside each AGM battery
+	|
+
+Battery unit capacity=
+	7.5
+	~	
+	~		|
+
+Maintenance cost per kwh=
+	0
+	~	
+	~		|
+
+Diesel costs=
+	Diesel electricity generation*Gallons of diesel per kwh*Diesel price
+	~	
+	~		|
+
+Panel life cycle CO2 emissions=
+	40
+	~	
+	~	 40 g CO2eq/kWh
+		https://www.nrel.gov/docs/fy13osti/56487.pdf
+	|
+
+Battery LCA=
+	IF THEN ELSE(Charge Discharge States=1, 0 , (Previous bank level percentage-Battery bank level percentage\
+		)*((Number of Batteries*Battery life cycle CO2 emissions)/(Life cycle of each battery\
+		*30)))
+	~	
+	~	30% DOD%
+	|
+
+Diesel price=
+	2.2
+	~	
+	~	SEI 2017 P 52
+	|
+
+CO2 emission per gallon=
+	1
+	~	
+	~		|
+
+DC BUS= INTEG (
+	Energy gain from the generator+PV Generation+Wind Generation-Consumption from the DC BUS\
+		-Excess energy,
+		Battery initial state of charge kWm)
+	~	
+	~		|
+
+Panel lifespan=
+	20*365*24*60
+	~	
+	~	20 years of lifespan was assumed for now!
+		https://www.sciencedirect.com/science/article/pii/S1364032121012922
+	|
+
+Maintenance=
+	Maintenance cost per kwh*Demand
+	~	
+	~		|
+
+Life cycle of each battery=
+	4000
+	~	
+	~	Cycles to replace the battery!
+		SEI 2018 P. 29, Figure 9
+	|
+
+Battery life cycle CO2 emissions=
+	0
+	~	
+	~	TBD
+	|
+
+Battery replacement cost=
+	IF THEN ELSE(Charge Discharge States=1, 0 , (Previous bank level percentage-Battery bank level percentage\
+		)*((Number of Batteries*Battery unit price)/(Life cycle of each battery*30)))
+	~	
+	~		|
+
+Fossil fuel CO2=
+	Diesel electricity generation*Gallons of diesel per kwh*CO2 emission per gallon
+	~	
+	~		|
+
+Battery unit price=
+	888
+	~	
+	~	SEI 2019 P.63
+	|
+
+Gallons of diesel per kwh=
+	0.0903
+	~	
+	~	SEI 2017 P 52
+	|
+
+Excess energy=
+	IF THEN ELSE((Battery capacity-DC BUS)<(PV Generation+Wind Generation+Energy gain from the generator\
+		-Consumption from the DC BUS
+), PV Generation+Wind Generation+Energy gain from the generator-Consumption from the DC BUS\
+		-(Battery capacity-DC BUS
+), 0 )
+	~	
+	~		|
+
+Panel replacement cost=
+	(Panel price*Number of solar panel installed)/Panel lifespan
+	~	
+	~		|
+
+Cumulative energy consumption= INTEG (
+	Energy supply from the generator+Consumption from the DC BUS,
+		0)
+	~	
+	~		|
+
+Cumulative system costs= INTEG (
+	Battery replacement cost+Diesel costs+Maintenance+Panel replacement cost,
+		0)
+	~	
+	~		|
+
+CO2 Emissions= INTEG (
+	Battery LCA+Fossil fuel CO2+Panel LCA,
+		0)
+	~	
+	~		|
+
+Panel price=
+	355
+	~	
+	~	SEI 2019 P.63
+	|
+
+Charge Discharge States=
+	IF THEN ELSE( Previous bank level percentage<=Battery bank level percentage,1,0)
+	~	
+	~	1 charging, 0 discharging
+	|
+
+Consumption from the DC BUS=
+	IF THEN ELSE(Charge Discharge States=1, IF THEN ELSE(Current generator state=1, 0 ,
+	 Demand) , IF THEN ELSE(Current generator state=1, 0 , (2-DC to AC efficiency)*Demand\
+		) )
+	~	
+	~		|
+
+DC to AC efficiency=
+	0.94
+	~	
+	~	1 means 100% efficient, while 90% represents 20% loss of energy!
+	|
+
+Previous bank level percentage= DELAY FIXED (
+	Battery bank level percentage,0,Battery initial state of charge kWm)
+	~	
+	~		|
+
+Solar radiation incident on the PV array GHI=
+	PV incident radiation*1000
+	~	
+	~	This should be beam array
+	|
+
+PV real data:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Points of comparison' , 'A' , 'I1' )
+	~	
+	~		|
+
+PV Generation=
+	(PV array output/1000)*Model switch solar+PV real data*(1-Model switch solar)
+	~	
+	~		|
+
+Model switch solar=
+	1
+	~	
+	~		|
+
+Diesel electricity generation=
+	IF THEN ELSE(Diesel generator capacity>=((Excess generator production+1)*Demand), Current generator state\
+		*Demand*(Excess generator production+1),Diesel generator capacity)
+	~	
+	~		|
+
+Initial percentage=
+	71
+	~	
+	~	GET XLS DATA( 'Data.xlsx' , 'Data' , 'A' , 'I1' )
+	|
+
+Battery bank level percentage=
+	DC BUS*100/(60*Battery total capacity)
+	~	
+	~	60 is for converting to kwmin, 100 is to convert it to %
+	|
+
+Battery capacity=
+	Battery total capacity*60
+	~	
+	~	60 converts kwm to kWh
+	|
+
+Energy gain from the generator=
+	Diesel electricity generation*(Excess generator production)/(Excess generator production\
+		+1)
+	~	
+	~		|
+
+Model switch wind=
+	0
+	~	
+	~		|
+
+Excess generator production:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Points of comparison' , 'A' , 'K1' )
+	~	
+	~	Found this number by comparing the real data generation with demand
+		GET XLS DATA( 'Data.xlsx' , 'Points of comparison' , 'A' , 'K1' )
+	|
+
+Wind real data:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Points of comparison' , 'A' , 'C1' )
+	~	
+	~		|
+
+Wind Generation=
+	Wind real data*(1-Model switch wind)+Wind power*Model switch wind
+	~	
+	~	GET XLS DATA( 'Data.xlsx' , '072919' , 'A' , 'I1' ) or connect to model
+	|
+
+Battery initial state of charge kWm=
+	Battery capacity*Initial percentage/100
+	~	
+	~		|
+
+Sandia Module Temperature Model cell temperature=
+	(Solar radiation incident on the PV array GHI)*(E^(Parameter a+Parameter b*Wind speed adjusted
+	))+The ambient temperature
+	~	
+	~		|
+
+Diffuse radiation=
+	IF THEN ELSE(Clearness index Kt<=0.22, Measured GHI radiation KW per m2*(1-0.09*Clearness index Kt\
+		) , IF THEN ELSE(Clearness index Kt
+	>0.8, 0.165*Measured GHI radiation KW per m2 , (0.9511-0.1604*Clearness index Kt+4.388\
+		*(Clearness index Kt^2)-16.638*(Clearness index Kt^3)+12.336*(Clearness index Kt
+	^4))*Measured GHI radiation KW per m2 ) )
+	~	
+	~	0.15*Measured GHI radiation KW per m2+0*Clearness index Kt
+	|
+
+Slope of the surface beta radian=
+	Slope of the surface beta degree/180
+	~	
+	~		|
+
+Azimuth gamma degree=
+	170
+	~	
+	~	Reference: SEI 2019, P.56
+	|
+
+Azimuth gamma radian=
+	Azimuth gamma degree/180
+	~	
+	~		|
+
+PV cell temperature in the current time step=
+	The ambient temperature+((Solar radiation incident on the PV array GHI)/1000)*((The solar absorptance of the PV array
+	*The solar transmittance of any cover over the PV array)/The coefficient of heat transfer to the surroundings\
+		)*(1-The efficiency of the PV array at its maximum power point
+	/(The solar absorptance of the PV array*The solar transmittance of any cover over the PV array\
+		))
+	~	
+	~		|
+
+FMT model cell temperature=
+	The ambient temperature+(The solar absorptance of the PV array*(Solar radiation incident on the PV array GHI
+	)*(1-Module efficiency))/(U0 constant heat transfer component+U1 convective heat transfer component\
+		*Wind speed adjusted)
+	~	
+	~		|
+
+Rated capacity of the PV array=
+	Total array area*Module efficiency
+	~	
+	~		|
+
+Beam radiation=
+	Measured GHI radiation KW per m2-Diffuse radiation
+	~	
+	~		|
+
+PV incident radiation=
+	(Beam radiation+Diffuse radiation*Anisotropy index Ai)*The ratio of beam radiation on the tilted surface to beam radiation on the horizontal surface Rb
+	+Diffuse radiation*(1-Anisotropy index Ai)*((1+cos(Slope of the surface beta radian)\
+		)/2)*(1+Cloudiness factor f*SIN
+	(Slope of the surface beta radian/2)^3)+Measured GHI radiation KW per m2*"Ground reflection; Albedo %"\
+		*((1-cos(Slope of the surface beta radian
+	))/2)
+	~	
+	~		|
+
+Slope of the surface beta degree=
+	20
+	~	
+	~	Reference: SEI 2019, P.56
+	|
+
+Longitude degree=
+	-70.78
+	~	
+	~	Reference: SML 2019 p.56
+	|
+
+Latitute Phi radian=
+	Latitute Phi degree/180
+	~	
+	~	Ask!
+	|
+
+Latitute Phi degree=
+	43.01
+	~	
+	~	Reference: SML 2019 p.56
+	|
+
+Longitude radian=
+	Longitude degree/180
+	~	
+	~		|
+
+Measured GHI radiation W per m2:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data', 'A' , 'E1' )
+	~	
+	~		|
+
+Measured GHI radiation KW per m2=
+	IF THEN ELSE((Measured GHI radiation W per m2)>=25, (Measured GHI radiation W per m2\
+		/1000) , 0 )
+	~	
+	~	Measured GHI radiation W per m2/1000
+	|
+
+Cloudiness factor f=
+	IF THEN ELSE((Measured GHI radiation KW per m2*Beam radiation)>0, SQRT(Beam radiation\
+		/Measured GHI radiation KW per m2), 0)
+	~	
+	~		|
+
+Clearness index Kt=
+	Measured GHI radiation KW per m2/The extraterrestrial horizontal radiation averaged over the time step
+	~	
+	~		|
+
+The extraterrestrial horizontal radiation averaged over the time step=
+	(12/3.1415)*The extraterrestrial normal radiation*(cos(Latitute Phi radian)*cos(Solar declination delta\
+		)*(SIN(Hour angle Omega+0.25)-SIN(Hour angle Omega))+(3.1415*0.25*SIN(Latitute Phi radian\
+		)*SIN(Solar declination delta)/180))
+	~	
+	~	The equation above is based on the fact that the sun moves across the sky \
+		at 15 degrees per hour.
+	|
+
+Angle of incident Cos theta=
+	SIN( Solar declination delta )*SIN(Latitute Phi radian)*cos( Slope of the surface beta radian\
+		 )-SIN(Solar declination delta)*cos(Latitute Phi radian)*SIN(Slope of the surface beta radian\
+		)*cos(Azimuth gamma radian)+cos(Solar declination delta)*cos(Latitute Phi radian)*cos\
+		(Slope of the surface beta radian)*cos(Azimuth gamma radian)+cos(Solar declination delta\
+		)*SIN(Latitute Phi radian)*SIN(Slope of the surface beta radian)*cos(Azimuth gamma radian\
+		)*cos(Hour angle Omega)+cos(Solar declination delta)*SIN(Slope of the surface beta radian\
+		)*SIN(Azimuth gamma radian)*SIN(Hour angle Omega)
+	~	
+	~		|
+
+Anisotropy index Ai=
+	Beam radiation/The extraterrestrial horizontal radiation averaged over the time step
+	~	
+	~		|
+
+Solar declination delta=
+	23.45*SIN(360*((284+The day of the year)/365))/180
+	~	
+	~		|
+
+B=
+	360*((The day of the year-1)/365)
+	~	
+	~		|
+
+The equation of time E=
+	3.82*(7.5e-005+0.001868*cos(B)-0.032077*SIN(B)-0.014615*cos(2*B)-0.04089*SIN(2*B))
+	~	
+	~		|
+
+Local standard time:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data', 'A' , 'G1' )
+	~	
+	~		|
+
+The day of the year:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data', 'A' , 'H1' )
+	~	
+	~		|
+
+The solar time ts=
+	Local standard time+(Longitude radian/15)-The time zone+The equation of time E
+	~	
+	~		|
+
+The extraterrestrial normal radiation=
+	Solar constant*(1+0.033*cos(360*The day of the year/365))
+	~	
+	~		|
+
+"Ground reflection; Albedo %"=
+	0.1
+	~	
+	~		|
+
+The time zone=
+	-4
+	~	
+	~		|
+
+Hour angle Omega=
+	(The solar time ts-12)*15/180
+	~	
+	~		|
+
+Solar constant=
+	1.367
+	~	
+	~		|
+
+The ratio of beam radiation on the tilted surface to beam radiation on the horizontal surface Rb\
+		=
+	Angle of incident Cos theta/Zenith angle Cos theta z
+	~	
+	~		|
+
+Zenith angle Cos theta z=
+	cos(Latitute Phi radian)*cos(Solar declination delta)*cos(Hour angle Omega)+SIN(Latitute Phi radian\
+		)*SIN(Solar declination delta)
+	~	
+	~		|
+
+PV array output=
+	((Rated capacity of the PV array*PV derating factor*(((Solar radiation incident on the PV array GHI\
+		))/Incident radiation at standard test condition)*(1+Temperature coefficient of power\
+		*(PV cell temperature under cooling condition in the current time step
+	-PV cell temperature under standard test conditions)))*Inverter efficiency*(1-System Losses\
+		))*(1-System degradation)^Time
+	~	
+	~		|
+
+Wind speed IOSN3:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data' , 'A' , 'D1' )
+	~	
+	~		|
+
+"Cumulative Energy Consumption (kWh)"=
+	Cumulative energy consumption/60
+	~	
+	~		|
+
+"Cumulative surplus energy (kWh)"=
+	Cumulative surplus energy/60
+	~	
+	~		|
+
+Wind power=
+	Turbine power data(Wind speed adjusted)/1000
+	~	
+	~		|
+
+Wind speed adjusted=
+	Height conversion factor*Wind speed IOSN3
+	~	
+	~		|
+
+"Cumulative diesel consumption from the generator (kWh)"=
+	Cumulative diesel consumption from the generator/60
+	~	
+	~		|
+
+Height conversion factor=
+	1.017
+	~	
+	~		|
+
+Turbine power data=
+	GET XLS LOOKUPS('Data.xlsx' , 'Power Table' , 'B' , 'C1' )
+	~	
+	~		|
+
+INITIAL TIME  = 0
+	~	Minute
+	~		|
+
+Average residential use panel size=
+	1.83
+	~	m2/p
+	~		|
+
+PV cell temperature under cooling condition in the current time step=
+	IF THEN ELSE(PV cell temperature in the current time step>Target temperature with cooling\
+		, Target temperature with cooling , PV cell temperature in the current time step )
+	~	
+	~		|
+
+PV derating factor=
+	0.95
+	~	
+	~		|
+
+Demand:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data', 'A' , 'F1' )
+	~	
+	~		|
+
+System Losses=
+	0.15
+	~	
+	~	Number adjusted based on the performance!
+	|
+
+Target temperature with cooling=
+	80
+	~	C
+	~		|
+
+The ambient temperature:INTERPOLATE::=
+	GET XLS DATA( 'Data.xlsx' , 'Data', 'A' , 'C1' )
+	~	
+	~		|
+
+The ambient temperature at which the NOCT is defined=
+	20
+	~	
+	~		|
+
+The coefficient of heat transfer to the surroundings=
+	The solar absorptance of the PV array*The solar transmittance of any cover over the PV array\
+		*The solar radiation at which the NOCT is defined/(The nominal operating cell temperature\
+		-The ambient temperature at which the NOCT is defined)
+	~	
+	~		|
+
+The efficiency of the PV array at its maximum power point=
+	The maximum power point efficiency under standard test conditions*(1+Temperature coefficient of power\
+		*(PV cell temperature under standard test conditions-PV cell temperature under standard test conditions\
+		))
+	~	
+	~	equals "the electrical conversion efficiency of the PV array"
+	|
+
+Incident radiation at standard test condition=
+	1
+	~	
+	~		|
+
+Inverter efficiency=
+	1
+	~	
+	~	Reference: SEI 2019, P.56
+	|
+
+The solar radiation at which the NOCT is defined=
+	0.8
+	~	
+	~		|
+
+Module efficiency=
+	0.15
+	~	
+	~		|
+
+Number of Batteries=
+	40
+	~	
+	~	SEI 2018 p.25
+	|
+
+Number of solar panel installed=
+	233
+	~	
+	~	Reference: SEI 2018, P. 34, Background (331 panels)-233 panels in use
+		Q: Are these include K-house?
+	|
+
+Parameter a=
+	-3.58
+	~	
+	~	a and b are parameters that depend on the module construction and \
+		materials as well as on the mounting configuration of the module.  The \
+		table below lists representative values for these parameters for various \
+		common module types and configurations.
+	|
+
+Parameter b=
+	-0.113
+	~	
+	~	Polymer/thin-film/steel
+		
+		Open rack
+		
+		-3.58
+		
+		-.113
+	|
+
+PV cell temperature under standard test conditions=
+	25
+	~	C
+	~		|
+
+The maximum power point efficiency under standard test conditions=
+	0.13
+	~	
+	~		|
+
+The nominal operating cell temperature=
+	(45+48)/2
+	~	
+	~		|
+
+The solar absorptance of the PV array=
+	0.9
+	~	
+	~		|
+
+U0 constant heat transfer component=
+	15
+	~	
+	~		|
+
+The solar transmittance of any cover over the PV array=
+	0.9
+	~	
+	~		|
+
+System degradation=
+	0.005/(365*24*60)
+	~	
+	~		|
+
+Total array area=
+	Average residential use panel size*Number of solar panel installed
+	~	
+	~		|
+
+U1 convective heat transfer component=
+	0
+	~	
+	~		|
+
+Temperature coefficient of power=
+	-0.0048
+	~	
+	~		|
+
+Cumulative diesel consumption from the generator= INTEG (
+	Diesel electricity generation,
+		0)
+	~	
+	~		|
+
+Cumulative surplus energy= INTEG (
+	Excess energy,
+		0)
+	~	
+	~		|
+
+Current generator state=
+	IF THEN ELSE(Previous generator state=1:AND:DC BUS<=Upper bound, 1 , IF THEN ELSE(DC BUS\
+		<=Lower bound,1,0))
+	~	
+	~		|
+
+Upper bound=
+	Battery capacity*0.78
+	~	
+	~	78% of the battery capacity
+	|
+
+Diesel generator capacity=
+	27*2
+	~	
+	~	2 generators each with 27 kW capacity
+	|
+
+Energy supply from the generator=
+	Diesel electricity generation*100/105
+	~	
+	~		|
+
+Lower bound=
+	Battery capacity*0.7
+	~	
+	~	68% of the battery capacity
+	|
+
+Previous generator state=
+	DELAY FIXED(Current generator state, 0 , 0 )
+	~	
+	~		|
+
+E=
+	2.71828
+	~	
+	~	The initial time for the simulation.
+	|
+
+********************************************************
+	.Control
+********************************************************~
+		Simulation Control Parameters
+	|
+
+FINAL TIME  = 103679
+	~	Minute
+	~	The final time for the simulation.
+	|
+
+SAVEPER  = 1
+	~	Minute [0,?]
+	~	The frequency with which output is stored.
+	|
+
+TIME STEP  = 1
+	~	Minute [0,?]
+	~	The time step for the simulation.
+	|
+
+\\\---/// Sketch information - do not modify anything except names
+V300  Do not put anything below this section - it will be ignored
+*View 1
+$192-192-192,0,Times New Roman|12||0-0-0|0-0-0|0-0-255|-1--1--1|-1--1--1|96,96,70,0
+10,1,DC BUS,1782,169,101,44,3,131,0,0,0,0,0,0
+10,2,Cumulative energy consumption,2247,182,85,44,3,131,0,0,0,0,0,0
+10,3,Cumulative surplus energy,1709,-36,49,38,3,131,0,0,0,0,0,0
+12,4,48,1498,185,10,8,0,3,0,0,-1,0,0,0
+1,5,7,1,4,0,0,22,0,0,0,-1--1--1,,1|(1642,185)|
+1,6,7,4,100,0,0,22,0,0,0,-1--1--1,,1|(1550,185)|
+11,7,48,1598,185,6,8,34,3,0,0,1,0,0,0
+10,8,PV Generation,1598,204,47,11,40,3,0,2,-1,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+12,9,48,1494,129,10,8,0,3,0,0,-1,0,0,0
+1,10,12,1,4,0,0,22,0,0,0,-1--1--1,,1|(1640,129)|
+1,11,12,9,100,0,0,22,0,0,0,-1--1--1,,1|(1546,129)|
+11,12,48,1594,129,6,8,34,3,0,0,1,0,0,0
+10,13,Wind Generation,1594,148,54,11,40,3,0,2,-1,0,0,0,-1--1--1,0-0-0,|12||0-128-0
+1,14,16,3,4,0,0,22,0,0,0,-1--1--1,,1|(1711,27)|
+1,15,16,1,100,0,0,22,0,0,0,-1--1--1,,1|(1711,94)|
+11,16,156,1711,58,8,6,33,3,0,0,4,0,0,0
+10,17,Excess energy,1764,58,45,11,40,3,0,0,-1,0,0,0
+1,18,20,2,4,0,0,22,0,0,0,-1--1--1,,1|(2076,185)|
+1,19,20,1,100,0,0,22,0,0,0,-1--1--1,,1|(1930,185)|
+11,20,860,1984,185,6,8,34,3,0,0,1,0,0,0
+10,21,Consumption from the DC BUS,1984,212,59,19,40,3,0,0,-1,0,0,0
+10,22,Demand,2093,86,28,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,23,22,21,1,0,0,0,0,128,0,-1--1--1,,1|(2053,151)|
+1,24,21,17,1,0,0,0,0,128,0,-1--1--1,,1|(1931,157)|
+12,25,48,2247,8,10,8,0,3,0,0,-1,0,0,0
+1,26,28,2,4,0,0,22,0,0,0,-1--1--1,,1|(2245,109)|
+1,27,28,25,100,0,0,22,0,0,0,-1--1--1,,1|(2245,42)|
+11,28,48,2245,74,8,6,33,3,0,0,4,0,0,0
+10,29,Energy supply from the generator,2315,74,62,19,40,3,0,0,-1,0,0,0
+12,30,48,1842,16,10,8,0,3,0,0,-1,0,0,0
+1,31,33,1,4,0,0,22,0,0,0,-1--1--1,,1|(1841,99)|
+1,32,33,30,100,0,0,22,0,0,0,-1--1--1,,1|(1841,42)|
+11,33,48,1841,67,8,6,33,3,0,0,4,0,0,0
+10,34,Energy gain from the generator,1915,67,66,19,40,3,0,0,-1,0,0,0
+10,35,Cumulative diesel consumption from the generator,2132,-98,78,34,3,131,0,0,0,0,0,0
+12,36,48,1860,-101,10,8,0,3,0,0,-1,0,0,0
+1,37,39,35,4,0,0,22,0,0,0,-1--1--1,,1|(1997,-101)|
+1,38,39,36,100,0,0,22,0,0,0,-1--1--1,,1|(1899,-101)|
+11,39,48,1935,-101,6,8,34,3,0,0,1,0,0,0
+10,40,Diesel electricity generation,1935,-74,52,19,40,3,0,0,-1,0,0,0
+1,41,40,34,1,0,0,0,0,128,0,-1--1--1,,1|(1922,-12)|
+1,42,40,29,1,0,0,0,0,128,0,-1--1--1,,1|(2114,-17)|
+1,43,22,40,1,0,0,0,0,128,0,-1--1--1,,1|(1983,22)|
+10,44,Current generator state,1927,-187,57,19,8,3,0,0,0,0,0,0
+10,45,Previous generator state,2156,-189,47,19,8,3,0,0,0,0,0,0
+1,46,45,44,1,0,0,0,0,128,0,-1--1--1,,1|(2041,-221)|
+1,47,44,45,1,0,0,0,0,128,0,-1--1--1,,1|(2032,-153)|
+1,48,44,40,1,0,0,0,0,128,0,-1--1--1,,1|(1897,-144)|
+10,49,Diesel generator capacity,2061,21,52,19,8,3,0,0,0,0,0,0
+10,50,Upper bound,1695,-239,43,11,8,3,0,0,0,0,0,0
+10,51,Lower bound,1701,-193,43,11,8,3,0,0,0,0,0,0
+1,52,50,44,1,0,0,0,0,128,0,-1--1--1,,1|(1820,-232)|
+1,53,51,44,0,0,0,0,0,128,0,-1--1--1,,1|(1800,-191)|
+10,54,Battery capacity,1536,40,51,11,8,3,0,0,0,0,0,0
+1,55,54,50,1,0,0,0,0,128,0,-1--1--1,,1|(1549,-84)|
+1,56,54,51,1,0,0,0,0,128,0,-1--1--1,,1|(1594,-82)|
+1,57,49,40,1,0,0,0,0,128,0,-1--1--1,,1|(1988,-22)|
+1,58,54,17,1,0,0,0,0,128,0,-1--1--1,,1|(1608,35)|
+1,59,1,17,1,0,0,0,0,128,0,-1--1--1,,1|(1753,119)|
+1,60,8,17,1,0,0,0,0,128,0,-1--1--1,,1|(1675,130)|
+1,61,13,17,1,0,0,0,0,128,0,-1--1--1,,1|(1620,112)|
+1,62,34,17,1,0,0,0,0,128,0,-1--1--1,,1|(1832,70)|
+10,63,PV array output,690,164,56,11,8,3,0,22,0,0,0,0,-1--1--1,255-255-0,|12|BIU|255-160-0
+10,64,System Losses,744,1,47,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,65,System degradation,866,-3,38,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,66,Incident radiation at standard test condition,860,86,72,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,67,PV cell temperature under standard test conditions,822,296,83,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,68,Temperature coefficient of power,843,541,64,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,69,The efficiency of the PV array at its maximum power point,754,439,88,28,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,70,The maximum power point efficiency under standard test conditions,643,545,92,28,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,71,The solar radiation at which the NOCT is defined,581,625,67,28,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,72,The ambient temperature at which the NOCT is defined,415,653,87,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,73,The coefficient of heat transfer to the surroundings,356,530,86,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,74,The nominal operating cell temperature,226,623,70,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,75,The solar absorptance of the PV array,472,464,71,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,76,The solar transmittance of any cover over the PV array,190,420,90,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,77,The ambient temperature,91,341,40,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,78,PV cell temperature in the current time step,416,345,71,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,79,Solar radiation incident on the PV array GHI,566,279,73,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,80,Module efficiency,473,191,56,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,81,Total array area,375,159,50,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,82,Number of solar panel installed,209,156,53,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,83,Rated capacity of the PV array,493,111,56,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,84,PV derating factor,530,64,58,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,85,Inverter efficiency,600,1,52,18,8,131,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,86,Average residential use panel size,323,90,61,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,87,Target temperature with cooling,127,239,61,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,88,PV cell temperature under cooling condition in the current time step,340,252,83,28,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,89,U1 convective heat transfer component,455,-45,61,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,90,FMT model cell temperature,428,-153,52,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,91,Wind speed adjusted,1034,-78,39,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||0-128-0
+10,92,U0 constant heat transfer component,602,-157,61,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,93,Sandia Module Temperature Model cell temperature,360,-310,77,28,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,94,Parameter a,541,-386,39,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+10,95,Parameter b,541,-354,39,11,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-128-0
+1,96,63,8,1,0,0,0,0,128,0,-1--1--1,,1|(1133,132)|
+1,97,65,63,1,0,0,0,0,128,0,-1--1--1,,1|(740,90)|
+1,98,66,63,1,0,0,0,0,128,0,-1--1--1,,1|(728,135)|
+1,99,64,63,1,0,0,0,0,128,0,-1--1--1,,1|(707,69)|
+1,100,68,69,1,0,0,0,0,128,0,-1--1--1,,1|(803,522)|
+1,101,67,69,1,0,0,0,0,128,0,-1--1--1,,1|(809,353)|
+1,102,69,78,1,0,0,0,0,128,0,-1--1--1,,1|(541,407)|
+1,103,70,69,0,0,0,0,0,128,0,-1--1--1,,1|(692,496)|
+1,104,71,73,0,0,0,0,0,128,0,-1--1--1,,1|(464,576)|
+1,105,72,73,0,0,0,0,0,128,0,-1--1--1,,1|(388,597)|
+1,106,74,73,0,0,0,0,0,128,0,-1--1--1,,1|(284,580)|
+1,107,75,73,0,0,0,0,0,128,0,-1--1--1,,1|(420,493)|
+1,108,75,78,0,0,0,0,0,128,0,-1--1--1,,1|(447,410)|
+1,109,76,73,0,0,0,0,0,128,0,-1--1--1,,1|(266,471)|
+1,110,73,78,1,0,0,0,0,128,0,-1--1--1,,1|(370,434)|
+1,111,76,78,0,0,0,0,0,128,0,-1--1--1,,1|(295,384)|
+1,112,77,78,0,0,0,0,0,128,0,-1--1--1,,1|(231,342)|
+1,113,79,78,0,0,0,0,0,128,0,-1--1--1,,1|(497,309)|
+1,114,79,63,0,0,0,0,0,128,0,-1--1--1,,1|(626,222)|
+1,115,85,63,1,0,0,0,0,128,0,-1--1--1,,1|(637,82)|
+1,116,83,63,0,0,0,0,0,128,0,-1--1--1,,1|(592,137)|
+1,117,81,83,1,0,0,0,0,128,0,-1--1--1,,1|(411,128)|
+1,118,80,83,1,0,0,0,0,128,0,-1--1--1,,1|(489,163)|
+1,119,84,63,0,0,0,0,0,128,0,-1--1--1,,1|(603,110)|
+1,120,86,81,1,0,0,0,0,128,0,-1--1--1,,1|(337,123)|
+1,121,82,81,1,0,0,0,0,128,0,-1--1--1,,1|(286,175)|
+1,122,87,88,0,0,0,0,0,128,0,-1--1--1,,1|(215,243)|
+1,123,78,88,1,0,0,0,0,128,0,-1--1--1,,1|(361,292)|
+1,124,88,63,1,0,0,0,0,128,0,-1--1--1,,1|(566,209)|
+1,125,89,90,0,0,0,0,0,128,0,-1--1--1,,1|(443,-93)|
+1,126,92,90,0,0,0,0,0,128,0,-1--1--1,,1|(517,-156)|
+1,127,94,93,1,0,0,0,0,128,0,-1--1--1,,1|(459,-369)|
+1,128,95,93,1,0,0,0,0,128,0,-1--1--1,,1|(480,-313)|
+10,129,Time,692,230,26,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||255-128-0
+1,130,129,63,0,0,0,0,0,128,0,-1--1--1,,1|(691,203)|
+10,131,E,165,-311,60,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||255-128-0
+1,132,131,93,0,0,0,0,0,128,0,-1--1--1,,1|(247,-311)|
+1,133,67,63,1,0,0,0,0,128,0,-1--1--1,,1|(745,203)|
+10,134,Wind power,1313,9,42,11,8,3,0,22,0,0,0,0,-1--1--1,192-255-192,|12|BIU|0-128-0
+10,135,Number of Batteries,1480,-102,35,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,136,Wind speed IOSN3,1198,-130,39,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,137,136,91,1,0,0,0,0,128,0,-1--1--1,,1|(1108,-131)|
+10,138,Height conversion factor,1192,-36,57,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||0-128-0
+1,139,138,91,0,0,0,0,0,128,0,-1--1--1,,1|(1110,-58)|
+10,140,Turbine power data,1288,-106,47,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||0-128-0
+1,141,91,134,1,0,0,0,0,128,0,-1--1--1,,1|(1155,15)|
+1,142,140,134,1,0,0,0,0,128,0,-1--1--1,,1|(1305,-56)|
+12,143,0,1126,-815,352,71,3,188,0,0,2,0,0,0
+Wind speed IOSN3,Table
+12,144,0,1128,-678,354,58,3,188,0,0,2,0,0,0
+Wind speed adjusted,Table
+12,145,0,1128,-511,354,103,3,188,0,0,2,0,0,0
+Turbine power data,Table
+12,146,0,1129,-336,354,65,3,188,0,0,2,0,0,0
+Wind power,Table
+10,147,Battery bank level percentage,1784,327,58,19,8,3,0,0,0,0,0,0
+1,148,1,147,0,0,0,0,0,128,0,-1--1--1,,1|(1782,253)|
+10,149,"Cumulative surplus energy (kWh)",1711,-123,60,19,8,3,0,0,0,0,0,0
+1,150,3,149,0,0,0,0,0,128,0,-1--1--1,,1|(1709,-83)|
+10,151,"Cumulative Energy Consumption (kWh)",2248,327,75,28,8,131,0,0,0,0,0,0
+10,152,"Cumulative diesel consumption from the generator (kWh)",2329,-99,69,28,8,3,0,0,0,0,0,0
+1,153,2,151,0,0,0,0,0,128,0,-1--1--1,,1|(2247,255)|
+1,154,35,152,0,0,0,0,0,128,0,-1--1--1,,1|(2228,-99)|
+12,155,0,1605,568,150,150,3,44,0,0,2,0,0,0
+Wind Generation,Graph
+12,156,0,1909,567,150,150,3,44,0,0,2,0,0,0
+PV Generation,Graph
+12,157,0,1606,941,453,221,3,188,0,0,2,0,0,0
+Battery bank level percentage,Graph
+12,158,0,2517,568,150,150,3,44,0,0,2,0,0,0
+"Cumulative Energy Consumption (kWh)",Graph
+12,159,0,2212,567,150,150,3,44,0,0,2,0,0,0
+"Cumulative surplus energy (kWh)",Graph
+12,160,0,1302,567,150,150,3,44,0,0,2,0,0,0
+Diesel electricity generation,Graph
+12,161,0,2516,873,150,150,3,44,0,0,2,0,0,0
+Demand,Graph
+12,162,0,2213,872,150,150,3,44,0,0,2,0,0,0
+Consumption from the DC BUS,Graph
+10,163,PV incident radiation,201,1050,43,19,8,3,0,20,0,0,0,0,-1--1--1,255-255-0,|12|BIU|0-0-0
+10,164,Beam radiation,62,959,48,11,8,3,0,0,0,0,0,0
+1,165,164,163,0,0,0,0,0,128,0,-1--1--1,,1|(118,996)|
+10,166,Anisotropy index Ai,309,925,36,19,8,3,0,0,0,0,0,0
+1,167,166,163,1,0,0,0,0,128,0,-1--1--1,,1|(272,984)|
+10,168,The ratio of beam radiation on the tilted surface to beam radiation on the horizontal surface Rb,450,987,106,31,8,131,0,0,0,0,0,0
+1,169,168,163,0,0,0,0,0,128,0,-1--1--1,,1|(300,1024)|
+10,170,Slope of the surface beta radian,371,1130,64,19,8,131,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,171,Cloudiness factor f,194,883,59,11,8,3,0,0,0,0,0,0
+1,172,170,163,1,0,0,0,0,128,0,-1--1--1,,1|(287,1104)|
+10,173,Measured GHI radiation KW per m2,76,829,69,19,8,3,0,0,0,0,0,0
+10,174,"Ground reflection; Albedo %",85,1098,58,19,8,3,0,0,0,0,0,0
+1,175,171,163,1,0,0,0,0,128,0,-1--1--1,,1|(202,948)|
+1,176,174,163,1,0,0,0,0,128,0,-1--1--1,,1|(163,1081)|
+1,177,173,163,1,0,0,0,0,128,0,-1--1--1,,1|(120,925)|
+1,178,173,171,1,0,0,0,0,128,0,-1--1--1,,1|(147,857)|
+10,179,Angle of incident Cos theta,585,1067,54,19,8,131,0,0,0,0,0,0
+10,180,Zenith angle Cos theta z,782,878,54,19,8,131,0,0,0,0,0,0
+1,181,179,168,1,0,0,0,0,128,0,-1--1--1,,1|(502,1050)|
+10,182,Solar declination delta,563,911,53,19,8,131,0,0,0,0,0,0
+10,183,Latitute Phi radian,649,946,57,11,8,3,0,0,0,0,0,0
+10,184,Azimuth gamma radian,581,1157,51,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,185,Hour angle Omega,759,1049,59,11,8,3,0,0,0,0,0,0
+1,186,170,179,1,0,0,0,0,128,0,-1--1--1,,1|(464,1112)|
+1,187,182,179,1,0,0,0,0,128,0,-1--1--1,,1|(600,985)|
+1,188,183,179,1,0,0,0,0,128,0,-1--1--1,,1|(646,1004)|
+1,189,184,179,0,0,0,0,0,128,0,-1--1--1,,1|(582,1118)|
+1,190,185,179,1,0,0,0,0,128,0,-1--1--1,,1|(688,1078)|
+10,191,The day of the year,585,817,46,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,192,191,182,1,0,0,0,0,128,0,-1--1--1,,1|(577,862)|
+1,193,183,180,1,0,0,0,0,128,0,-1--1--1,,1|(674,910)|
+1,194,185,180,1,0,0,0,0,128,0,-1--1--1,,1|(791,981)|
+1,195,182,180,1,0,0,0,0,128,0,-1--1--1,,1|(629,869)|
+10,196,The solar time ts,913,1046,52,11,8,3,0,0,0,0,0,0
+1,197,196,185,1,0,0,0,0,128,0,-1--1--1,,1|(832,1020)|
+10,198,Local standard time,850,943,48,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+10,199,Longitude radian,994,951,53,11,8,3,0,0,0,0,0,0
+10,200,The time zone,1076,1014,44,11,8,3,0,0,0,0,0,0
+10,201,The equation of time E,1032,1101,50,19,8,3,0,0,0,0,0,0
+1,202,201,196,0,0,0,0,0,128,0,-1--1--1,,1|(969,1072)|
+1,203,200,196,0,0,0,0,0,128,0,-1--1--1,,1|(1005,1027)|
+1,204,199,196,0,0,0,0,0,128,0,-1--1--1,,1|(958,993)|
+1,205,198,196,0,0,0,0,0,128,0,-1--1--1,,1|(879,992)|
+10,206,B,953,1160,7,11,8,3,0,0,0,0,0,0
+1,207,206,201,1,0,0,0,0,128,0,-1--1--1,,1|(986,1153)|
+10,208,The extraterrestrial horizontal radiation averaged over the time step,406,815,92,28,8,3,0,0,0,0,0,0
+1,209,208,166,1,0,0,0,0,128,0,-1--1--1,,1|(340,854)|
+10,210,The extraterrestrial normal radiation,589,728,60,19,8,3,0,0,0,0,0,0
+1,211,210,208,1,0,0,0,0,128,0,-1--1--1,,1|(474,749)|
+1,212,191,210,1,0,0,0,0,128,0,-1--1--1,,1|(590,773)|
+10,213,Solar constant,719,790,45,11,8,3,0,0,0,0,0,0
+1,214,213,210,0,0,0,0,0,128,0,-1--1--1,,1|(668,765)|
+1,215,182,208,0,0,0,0,0,128,0,-1--1--1,,1|(497,871)|
+10,216,Zenith angle Cos theta z,377,1068,58,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,217,216,168,1,0,0,0,0,128,0,-1--1--1,,1|(420,1040)|
+10,218,The day of the year,862,1105,51,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,219,218,206,1,0,0,0,0,128,0,-1--1--1,,1|(897,1143)|
+10,220,Hour angle Omega,381,709,40,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,221,220,208,1,0,0,0,0,128,0,-1--1--1,,1|(378,752)|
+10,222,Latitute Phi radian,407,895,41,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,223,222,208,1,0,0,0,0,128,0,-1--1--1,,1|(418,866)|
+10,224,Beam radiation,206,780,57,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,225,224,171,1,0,0,0,0,128,0,-1--1--1,,1|(211,833)|
+1,226,224,166,1,0,0,0,0,128,0,-1--1--1,,1|(253,841)|
+10,227,Measured GHI radiation W per m2,45,758,62,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,228,227,173,0,0,0,0,0,128,0,-1--1--1,,1|(57,787)|
+10,229,Clearness index Kt,85,684,60,11,8,3,0,0,0,0,0,0
+1,230,208,229,1,0,0,0,0,128,0,-1--1--1,,1|(237,722)|
+1,231,173,164,0,0,0,0,0,128,0,-1--1--1,,1|(69,891)|
+1,232,173,229,1,0,0,0,0,128,0,-1--1--1,,1|(137,748)|
+10,233,Azimuth gamma degree,573,1235,51,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,234,233,184,0,0,0,0,0,128,0,-1--1--1,,1|(575,1202)|
+10,235,Longitude degree,933,877,55,11,8,3,0,0,0,0,0,0
+1,236,235,199,1,0,0,0,0,128,0,-1--1--1,,1|(989,902)|
+10,237,Latitute Phi degree,712,1000,59,11,8,3,0,0,0,0,0,0
+1,238,237,183,1,0,0,0,0,128,0,-1--1--1,,1|(716,970)|
+10,239,Slope of the surface beta degree,362,1210,64,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,240,239,170,0,0,0,0,0,128,0,-1--1--1,,1|(365,1176)|
+10,241,PV incident radiation,688,356,42,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,242,241,79,0,0,0,0,0,128,0,-1--1--1,,1|(632,321)|
+10,243,Wind speed adjusted,334,-225,44,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,244,243,90,1,0,0,0,0,128,0,-1--1--1,,1|(363,-197)|
+1,245,243,93,1,0,0,0,0,128,0,-1--1--1,,1|(327,-261)|
+10,246,The solar absorptance of the PV array,186,-148,75,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,247,246,90,1,0,0,0,0,128,0,-1--1--1,,1|(308,-147)|
+10,248,The ambient temperature,178,-225,44,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,249,248,93,1,0,0,0,0,128,0,-1--1--1,,1|(243,-267)|
+1,250,248,90,1,0,0,0,0,128,0,-1--1--1,,1|(288,-184)|
+10,251,Module efficiency,278,-71,35,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,252,Solar radiation incident on the PV array GHI,462,-229,78,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,253,252,90,1,0,0,0,0,128,0,-1--1--1,,1|(457,-195)|
+1,254,252,93,1,0,0,0,0,128,0,-1--1--1,,1|(427,-265)|
+1,255,251,90,0,0,0,0,0,128,0,-1--1--1,,1|(346,-109)|
+10,256,Temperature coefficient of power,918,179,68,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,257,256,63,0,0,0,0,0,128,0,-1--1--1,,1|(804,171)|
+10,258,Current generator state,1982,116,52,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,259,258,21,0,0,0,0,0,128,0,-1--1--1,,1|(1982,157)|
+10,260,DC BUS,1921,-293,39,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,261,260,44,0,0,0,0,0,128,0,-1--1--1,,1|(1922,-251)|
+10,262,Diffuse radiation,-77,968,51,11,8,3,0,0,0,0,0,0
+1,263,229,262,1,0,0,0,0,128,0,-1--1--1,,1|(-92,788)|
+1,264,262,164,1,0,0,0,0,128,0,-1--1--1,,1|(-5,958)|
+1,265,262,163,1,0,0,0,0,128,0,-1--1--1,,1|(-8,1046)|
+1,266,173,262,0,0,0,0,0,128,0,-1--1--1,,1|(1,897)|
+10,267,Battery initial state of charge kWm,1641,310,58,19,8,3,0,0,0,0,0,0
+1,268,267,1,1,0,0,0,0,128,1,-1--1--1,,1|(1651,245)|
+10,269,Wind real data,1291,77,47,11,8,3,0,0,0,0,0,0
+1,270,269,13,1,0,0,0,0,128,0,-1--1--1,,1|(1431,138)|
+1,271,134,13,1,0,0,0,0,128,0,-1--1--1,,1|(1458,55)|
+10,272,Model switch wind,1423,88,60,11,8,3,0,0,0,0,0,0
+1,273,272,13,0,0,0,0,0,128,0,-1--1--1,,1|(1501,115)|
+1,274,54,267,1,0,0,0,0,128,0,-1--1--1,,1|(1512,200)|
+10,275,Initial percentage,1452,309,53,11,8,3,0,0,0,0,0,0
+1,276,275,267,1,0,0,0,0,128,0,-1--1--1,,1|(1539,338)|
+10,277,Battery total capacity,1434,-2,40,19,8,3,0,0,0,0,0,0
+1,278,277,54,1,0,0,0,0,128,0,-1--1--1,,1|(1461,38)|
+10,279,Battery total capacity,1710,246,44,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,280,279,147,1,0,0,0,0,128,0,-1--1--1,,1|(1733,302)|
+10,281,Excess generator production,1831,-24,55,19,8,3,0,2,0,0,0,0,-1--1--1,0-0-0,|12||255-0-0
+1,282,281,34,1,0,0,0,0,128,0,-1--1--1,,1|(1884,12)|
+1,283,281,40,1,0,0,0,0,128,0,-1--1--1,,1|(1858,-71)|
+10,284,PV real data,1282,208,40,11,8,3,0,0,0,0,0,0
+10,285,Model switch solar,1427,268,60,11,8,3,0,0,0,0,0,0
+1,286,284,8,1,0,0,0,0,128,0,-1--1--1,,1|(1439,192)|
+1,287,285,8,1,0,0,0,0,128,0,-1--1--1,,1|(1554,244)|
+10,288,Previous bank level percentage,1842,258,40,23,8,131,0,0,0,0,0,0
+1,289,147,288,1,0,0,0,0,128,0,-1--1--1,,1|(1840,293)|
+1,290,267,288,1,0,0,0,0,128,1,-1--1--1,,1|(1784,355)|
+10,291,DC to AC efficiency,2094,292,34,19,8,3,0,0,0,0,0,0
+1,292,291,21,1,0,0,0,0,128,0,-1--1--1,,1|(2074,239)|
+10,293,Charge Discharge States,1929,339,57,19,8,3,0,0,0,0,0,0
+1,294,288,293,1,0,0,0,0,128,0,-1--1--1,,1|(1912,287)|
+1,295,147,293,1,0,0,0,0,128,0,-1--1--1,,1|(1847,354)|
+1,296,293,21,1,0,0,0,0,128,0,-1--1--1,,1|(1969,288)|
+10,297,Gallons of diesel per kwh,2905,-97,53,19,8,3,0,0,0,0,0,0
+10,298,Diesel price,2827,-53,38,11,8,3,0,0,0,0,0,0
+10,299,Cumulative system costs,3075,-147,72,50,3,131,0,0,0,0,0,0
+12,300,48,2711,-155,10,8,0,3,0,0,-1,0,0,0
+1,301,303,299,4,0,0,22,0,0,0,-1--1--1,,1|(2909,-157)|
+1,302,303,300,100,0,0,22,0,0,0,-1--1--1,,1|(2762,-157)|
+11,303,48,2809,-157,6,8,34,3,0,0,1,0,0,0
+10,304,Diesel costs,2809,-138,38,11,40,3,0,0,-1,0,0,0
+10,305,Diesel electricity generation,2719,-68,57,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,306,305,304,0,0,0,0,0,128,0,-1--1--1,,1|(2762,-103)|
+1,307,298,304,0,0,0,0,0,128,0,-1--1--1,,1|(2819,-89)|
+1,308,297,304,0,0,0,0,0,128,0,-1--1--1,,1|(2853,-119)|
+12,309,48,3076,-380,10,8,0,3,0,0,-1,0,0,0
+1,310,312,299,4,0,0,22,0,0,0,-1--1--1,,1|(3075,-243)|
+1,311,312,309,100,0,0,22,0,0,0,-1--1--1,,1|(3075,-336)|
+11,312,48,3075,-294,8,6,33,3,0,0,4,0,0,0
+10,313,Battery replacement cost,3137,-294,54,19,40,3,0,0,-1,0,0,0
+12,314,48,3072,97,10,8,0,3,0,0,-1,0,0,0
+1,315,317,299,4,0,0,22,0,0,0,-1--1--1,,1|(3074,-50)|
+1,316,317,314,100,0,0,22,0,0,0,-1--1--1,,1|(3074,49)|
+11,317,48,3074,3,8,6,33,3,0,0,4,0,0,0
+10,318,Panel replacement cost,3136,3,54,19,40,3,0,0,-1,0,0,0
+12,319,48,3397,-172,10,8,0,3,0,0,-1,0,0,0
+1,320,322,299,4,0,0,22,0,0,0,-1--1--1,,1|(3208,-168)|
+1,321,322,319,100,0,0,22,0,0,0,-1--1--1,,1|(3334,-168)|
+11,322,48,3275,-168,6,8,34,3,0,0,1,0,0,0
+10,323,Maintenance,3275,-149,39,11,40,3,0,0,-1,0,0,0
+10,324,Maintenance cost per kwh,3367,-78,56,19,8,3,0,0,0,0,0,0
+10,325,Demand,3420,-120,37,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,326,324,323,1,0,0,0,0,128,0,-1--1--1,,1|(3286,-107)|
+1,327,325,323,0,0,0,0,0,128,0,-1--1--1,,1|(3355,-134)|
+10,328,Panel price,3137,119,36,11,8,3,0,0,0,0,0,0
+10,329,Number of solar panel installed,3236,73,57,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,330,Panel lifespan,3282,32,47,11,8,3,0,4,0,0,0,0,-1--1--1,255-0-0,|12||0-0-0
+1,331,328,318,0,0,0,0,0,128,0,-1--1--1,,1|(3136,71)|
+1,332,329,318,0,0,0,0,0,128,0,-1--1--1,,1|(3191,41)|
+1,333,330,318,0,0,0,0,0,128,0,-1--1--1,,1|(3219,19)|
+10,334,Battery unit price,3295,-358,54,11,8,3,0,0,0,0,0,0
+10,335,Life cycle of each battery,3313,-311,56,19,8,3,0,0,0,0,0,0
+10,336,Number of Batteries,3154,-424,40,19,8,2,0,3,-1,0,0,0,128-128-128,255-0-0,|12||128-128-128
+10,337,Consumption from the DC BUS,2477,-441,64,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,338,336,313,0,0,0,0,0,128,0,-1--1--1,,1|(3146,-366)|
+1,339,334,313,1,0,0,0,0,128,0,-1--1--1,,1|(3222,-336)|
+1,340,335,313,0,0,0,0,0,128,0,-1--1--1,,1|(3230,-304)|
+10,341,Charge Discharge States,3254,-411,62,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,342,341,313,0,0,0,0,0,128,0,-1--1--1,,1|(3200,-358)|
+10,343,Previous bank level percentage,3327,-261,67,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,344,Battery bank level percentage,3188,-228,62,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,345,343,313,0,0,0,0,0,128,0,-1--1--1,,1|(3232,-278)|
+1,346,344,313,0,0,0,0,0,128,0,-1--1--1,,1|(3166,-256)|
+10,347,CO2 Emissions,3910,-145,62,48,3,131,0,0,0,0,0,0
+12,348,48,3648,-150,10,8,0,3,0,0,-1,0,0,0
+1,349,351,347,4,0,0,22,0,0,0,-1--1--1,,1|(3803,-150)|
+1,350,351,348,100,0,0,22,0,0,0,-1--1--1,,1|(3702,-150)|
+11,351,48,3753,-150,6,8,34,3,0,0,1,0,0,0
+10,352,Fossil fuel CO2,3753,-131,50,11,40,3,0,0,-1,0,0,0
+12,353,48,3905,28,10,8,0,3,0,0,-1,0,0,0
+1,354,356,347,4,0,0,22,0,0,0,-1--1--1,,1|(3905,-71)|
+1,355,356,353,100,0,0,22,0,0,0,-1--1--1,,1|(3905,-7)|
+11,356,48,3905,-39,8,6,33,3,0,0,4,0,0,0
+10,357,Panel LCA,3949,-39,36,11,40,3,0,0,-1,0,0,0
+12,358,48,3907,-293,10,8,0,3,0,0,-1,0,0,0
+1,359,361,347,4,0,0,22,0,0,0,-1--1--1,,1|(3907,-213)|
+1,360,361,358,100,0,0,22,0,0,0,-1--1--1,,1|(3907,-265)|
+11,361,48,3907,-239,8,6,33,3,0,0,4,0,0,0
+10,362,Battery LCA,3957,-239,42,11,40,3,0,0,-1,0,0,0
+10,363,Diesel electricity generation,3655,-225,57,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,364,Gallons of diesel per kwh,3622,-80,57,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,365,CO2 emission per gallon,3765,-53,58,19,8,3,0,0,0,0,0,0
+1,366,363,352,0,0,0,0,0,128,0,-1--1--1,,1|(3702,-179)|
+1,367,364,352,0,0,0,0,0,128,0,-1--1--1,,1|(3690,-107)|
+1,368,365,352,0,0,0,0,0,128,0,-1--1--1,,1|(3759,-90)|
+10,369,Panel life cycle CO2 emissions,3988,63,66,19,8,3,0,4,0,0,0,0,-1--1--1,255-0-0,|12||0-0-0
+10,370,Number of solar panel installed,4111,13,57,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,371,Panel lifespan,4103,-67,56,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,372,371,357,0,0,0,0,0,128,0,-1--1--1,,1|(4022,-53)|
+1,373,370,357,0,0,0,0,0,128,0,-1--1--1,,1|(4025,-15)|
+1,374,369,357,0,0,0,0,0,128,0,-1--1--1,,1|(3969,14)|
+10,375,Battery life cycle CO2 emissions,4085,-332,53,19,8,3,0,4,0,0,0,0,-1--1--1,255-0-0,|12||0-0-0
+10,376,Life cycle of each battery,4170,-270,61,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,377,Previous bank level percentage,4136,-219,67,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,378,Battery bank level percentage,4065,-172,62,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,379,Charge Discharge States,3969,-373,62,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+10,380,Number of Batteries,3844,-347,40,19,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,381,378,362,0,0,0,0,0,128,0,-1--1--1,,1|(4010,-206)|
+1,382,377,362,0,0,0,0,0,128,0,-1--1--1,,1|(4040,-230)|
+1,383,376,362,0,0,0,0,0,128,0,-1--1--1,,1|(4060,-256)|
+1,384,375,362,0,0,0,0,0,128,0,-1--1--1,,1|(4021,-286)|
+1,385,379,362,1,0,0,0,0,128,0,-1--1--1,,1|(3978,-312)|
+1,386,380,362,1,0,0,0,0,128,0,-1--1--1,,1|(3912,-310)|
+10,387,Battery unit capacity,1377,-87,37,19,8,3,0,0,0,0,0,0
+1,388,387,277,1,0,0,0,0,128,0,-1--1--1,,1|(1386,-31)|
+1,389,135,277,1,0,0,0,0,128,0,-1--1--1,,1|(1477,-46)|
+10,390,Time,3842,9,26,11,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|12||128-128-128
+1,391,390,357,1,0,0,0,0,128,0,-1--1--1,,1|(3865,-28)|
+10,392,Cumulative battery costs,2908,-451,97,62,3,131,0,0,0,0,0,0
+10,393,Cumulative diesel costs,2905,222,100,66,3,131,0,0,0,0,0,0
+10,394,Cumulative panel costs,3460,224,108,69,3,131,0,0,0,0,0,0
+12,395,48,2890,6,10,8,0,3,0,0,-1,0,0,0
+1,396,398,393,4,0,0,22,0,0,0,-1--1--1,,1|(2890,123)|
+1,397,398,395,100,0,0,22,0,0,0,-1--1--1,,1|(2890,46)|
+11,398,48,2890,85,8,6,33,3,0,0,4,0,0,0
+10,399,Diesel inflow costs,2956,85,58,11,40,3,0,0,-1,0,0,0
+12,400,48,3455,34,10,8,0,3,0,0,-1,0,0,0
+1,401,403,394,4,0,0,22,0,0,0,-1--1--1,,1|(3455,129)|
+1,402,403,400,100,0,0,22,0,0,0,-1--1--1,,1|(3455,67)|
+11,403,48,3455,98,8,6,33,3,0,0,4,0,0,0
+10,404,Panel inflow costs,3519,98,56,11,40,3,0,0,-1,0,0,0
+12,405,48,2908,-238,10,8,0,3,0,0,-1,0,0,0
+1,406,408,392,4,0,0,22,0,0,0,-1--1--1,,1|(2908,-356)|
+1,407,408,405,100,0,0,22,0,0,0,-1--1--1,,1|(2908,-279)|
+11,408,48,2908,-317,8,6,33,3,0,0,4,0,0,0
+10,409,Battery inflow costs,2961,-317,45,19,40,3,0,0,-1,0,0,0
+10,410,Cumulative maintenance costs,3539,-448,107,60,3,131,0,0,0,0,0,0
+12,411,48,3513,-236,10,8,0,3,0,0,-1,0,0,0
+1,412,414,410,4,0,0,22,0,0,0,-1--1--1,,1|(3515,-357)|
+1,413,414,411,100,0,0,22,0,0,0,-1--1--1,,1|(3515,-279)|
+11,414,48,3515,-320,8,6,33,3,0,0,4,0,0,0
+10,415,Maintenance inflow costs,3564,-320,41,19,40,3,0,0,-1,0,0,0
+1,416,304,399,1,0,0,0,0,128,0,-1--1--1,,1|(2845,66)|
+1,417,313,409,1,0,0,0,0,128,0,-1--1--1,,1|(3000,-252)|
+1,418,318,404,1,0,0,0,0,128,0,-1--1--1,,1|(3403,11)|
+1,419,323,415,1,0,0,0,0,128,0,-1--1--1,,1|(3405,-227)|
+10,420,Cumulative PV generation,1120,279,40,20,3,3,0,0,0,0,0,0
+10,421,Cumulative wind generation,1142,83,40,20,3,3,0,0,0,0,0,0
+1,422,13,421,1,0,0,0,0,128,0,-1--1--1,,1|(1214,126)|
+1,423,8,420,1,0,0,0,0,128,0,-1--1--1,,1|(1187,237)|
+///---\\\
+:L<%^E!@
+1:Simulation.vdf
+1:Real Data.vdf
+9:Simulation
+11:Shoal Island Microgrid System.voc
+12:Payoff_ME.VPD
+15:0,0,0,0,0,0
+19:70,0
+27:2,
+34:0,
+4:Time
+5:DC to AC efficiency
+35:Date
+36:YYYY-MM-DD
+37:2019
+38:7
+39:3
+40:6
+41:0
+42:1
+24:0
+25:103679
+26:103679
