@@ -2,6 +2,7 @@ import random
 
 import numpy as np
 import pandas as pd
+from typing import Dict
 
 import read_csv
 
@@ -33,7 +34,7 @@ class State:
 
 
 def main():
-    data_dict = read_csv.read_files()
+    data_dict: Dict[str, pd.DataFrame] = read_csv.read_files()
     global T
     T = len(data_dict['demand'])
     global sim_states
