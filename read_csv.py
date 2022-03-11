@@ -9,10 +9,10 @@ read data from:
  https://sustainablesml.org/pages/export.php
 
 data:
- 2 ECB power generation csv files (wind/solar) -> 
- 1 ECB battery soc file -> 
- 1 Generator Room power demand csv file -> 
- 1 diesel generator file -> map to indicator variable (on/off)??
+ 2 ECB power generation csv files (wind/solar) ->  combine to one total renewable power gen df 
+ 1 ECB battery soc file -> take SoC only
+ 1 Generator Room power demand csv file -> demand df
+ 1 diesel generator file -> take power output to later be mapped to indicator variable (on/off)
  
  how to create demand prediction?
  how to create power generation prediction?
@@ -68,10 +68,15 @@ def read_files():
     # avgdieseloutput = powervals.mean()
     # print(avgdieseloutput)
 
-    return {'renewable': powergen_df,
-            'diesel': diesel_df,
-            'demand': demand_df,
-            'battery': battery_df}
+    # return {'renewable': powergen_df,
+    #         'diesel': diesel_df,
+    #         'demand': demand_df,
+    #         'battery': battery_df}
+    # 1008 rows is 7 days, 144 rows is 1 day
+    return {'renewable': powergen_df.iloc[0:1008],
+            'diesel': diesel_df.iloc[0:1008],
+            'demand': demand_df.iloc[0:1008],
+            'battery': battery_df.iloc[0:1008]}
 
 
 def print_df(df, name='df'):

@@ -7,13 +7,15 @@ from typing import Dict
 import tensorflow
 from keras import Model
 from keras import Sequential
+from numpy import exp
 
 import read_csv
 
 T = 0
 
-GENERATOR_REWARD = 10
+GENERATOR_REWARD = -10
 BAD_SOC_COST = -1000
+CRITICAL_SOC_COST = -1000000
 
 AVG_GENERATOR_OUTPUT = 13000
 ACTIONS = {0, 1}
@@ -23,8 +25,33 @@ ACTIONS = {0, 1}
 # Wh = V * Ah = 50 * 700 = 35000 Wh = 35 kWh
 TOTAL_BATTERY_CAPACITY = 35000
 
-
 V_TILDE = 0
+
+feature_function = {
+    "linear": lambda s: np.array(
+        [1, s.is_generator_on, s.battery_charge * s.is_generator_on, s.battery_charge * (1 - s.is_generator_on)]),
+    "spline": lambda s: np.array(
+        [1, s.is_generator_on,
+         s.battery_charge * s.is_generator_on,
+         s.battery_charge * (1 - s.is_generator_on),
+         max(0, s.battery_charge - 20),
+         max(0, s.battery_charge - 30),
+         max(0, s.battery_charge - 40),
+         max(0, s.battery_charge - 50),
+         max(0, s.battery_charge - 60),
+         max(0, s.battery_charge - 70),
+         max(0, s.battery_charge - 80),
+         max(0, s.battery_charge - 90)]),
+    "rbf": lambda s: np.array(
+        [s.is_generator_on,
+         s.battery_charge * s.is_generator_on,
+         s.battery_charge * (1 - s.is_generator_on),
+         exp(-(s.battery_charge - 20) ** 2 / 50),
+         exp(-(s.battery_charge - 40) ** 2 / 50),
+         exp(-(s.battery_charge - 60) ** 2 / 50),
+         exp(-(s.battery_charge - 75) ** 2 / 50),
+         exp(-(s.battery_charge - 90) ** 2 / 50)])
+}
 
 
 @unique
@@ -40,7 +67,7 @@ class Policy(Enum):
 # TODO optimize by replacing class with dictionary of numpy arrays, one for each variable
 #  or big array w one dimension to choose a variable?
 class State:
-    def __init__(self, SoC, is_gen_on, dem, gen, dem_pred, gen_pred):
+    def __init__(self, SoC=0, is_gen_on=0, dem=0, gen=0, dem_pred=None, gen_pred=None):
         self.battery_charge = SoC
         self.is_generator_on = is_gen_on
         self.demand = dem
@@ -66,34 +93,34 @@ def init_vensim():
 
 
 def policy(s, t, policy):
+    ret = None
     if policy == Policy.RANDOM:
-        return random.choice([True, False])
+        ret = random.choice([True, False])
     elif policy == Policy.GEN_WHEN_UNDER_70:
-        return s.battery_charge < 70
+        ret = s.battery_charge < 70
     elif policy == Policy.GEN_WHEN_UNDER_50:
-        return s.battery_charge < 50
+        ret = s.battery_charge < 50
     elif policy == Policy.GEN_WHEN_UNDER_25:
-        return s.battery_charge < 25
+        ret = s.battery_charge < 25
     elif policy == Policy.GEN_WHEN_UNDER_70_AND_HIGH_DEMAND:
-        return s.battery_charge < 70 and s.demand > s.generation
+        ret = s.battery_charge < 70 and s.demand > s.generation
     elif policy == Policy.PVI:
-        return fvi_policy(s, t, V_TILDE)
+        ret = pvi_policy(s, t, V_TILDE)
     else:
-        return None
+        ret = None
+    return int(ret)
 
 
-# TODO should data_states be referred to as a trajectory?
 def pvi_v_tilde(data_states):
-    # dimension of feature function
-    K = 2
-
     # amount of states to sample from data
-    S_hat_size = 1000
+    S_hat_size = 50
+    # S_hat_size = int(len(data_states) / 10)
 
-    # linear feature function
-    # TODO how to handle multiple variables from each state? need more dimensions in phi?
-    # TODO what is a good feature function?
-    phi = lambda s: np.array([1, s.battery_charge])
+    # TODO what is a good feature function? try RBF, linear spline
+
+    phi = feature_function['rbf']
+    # dimension of feature function
+    K = phi(State()).shape[0]
 
     # weights for fitting model
     w = np.zeros([T + 1, K])
@@ -101,24 +128,21 @@ def pvi_v_tilde(data_states):
     # samples of "true" value function
     v_hat = np.zeros([T + 1, S_hat_size])
 
-    # TODO make sample evenly spaced to get data from all times of month, this takes random values
+    # TODO make sample evenly spaced to get data from all times of month? this takes random values
     S_hat = random.sample(data_states, S_hat_size)
 
     # for fitting model
     A = np.array([phi(s) for s in S_hat])
 
-    # TODO make work
     # calculate w and v_hat values for each state
     for t in reversed(range(T - 1)):
         for state_index in range(S_hat_size):
             state = S_hat[state_index]
             rewards_by_action = np.zeros([len(ACTIONS)])
             for action in ACTIONS:
-                # compare possible actions and the reward from v_tilde(phi*w) for next state
+                # compare possible actions and the reward from v_tilde  (phi@w) for next state
                 rewards_by_action[action] = r(state, action) + phi(f(state, action, t)).T @ w[t + 1]
 
-                # avg across disturbances
-                # rewards_by_action[action] = np.average(rewards_by_action[action])
             # store max value of each state in v_hat
             v_hat[t][state_index] = np.max(rewards_by_action)
 
@@ -128,7 +152,7 @@ def pvi_v_tilde(data_states):
 
     # use final weights
     w = w[0]
-    print(f'final w {w}')
+    print(f'\n\nfinal w: {w}\n\n')
 
     # approximated value function
     v_tilde = lambda s: phi(s).T @ w
@@ -136,16 +160,15 @@ def pvi_v_tilde(data_states):
     return v_tilde
 
 
-# once we have w, use this to choose actions given a state
-# given state, choose action according to FVI greedy policy
-# TODO make work
-def fvi_policy(state, t, approx_value_function):
+# once we have v_tilde:
+# given state, choose action according to PVI greedy policy
+def pvi_policy(state, t, approx_value_function):
     reward_by_action = np.zeros([2])
 
     # compute reward for each action
     for action in ACTIONS:
         next_state_value = approx_value_function(f(state, action, t))
-        print(f'next state approx value: {next_state_value}')
+        # print(f'next state approx value: {next_state_value}')
         reward_by_action[action] = r(state, action) + next_state_value
     # return action that gives max reward
     return np.argmax(reward_by_action)
@@ -167,8 +190,6 @@ def sim_rl():
     T = len(data_dict['demand']) - 1
     # len() - 1 because f() depends on next state from data
 
-
-    # TODO should data_states be referred to as a trajectory?
     global data_states
     data_states = create_data_state_list(data_dict)
 
@@ -181,12 +202,17 @@ def sim_rl():
     for m in range(M):
         cumulative_reward = np.zeros([T])
         total_reward = 0
+        gen_was_run = False
         states = [State(100, False, 0, 0, None, None)]
         for t in range(T - 1):
             s = states[t]
 
             action = policy(s, t, policy_choice)
-            print(f'action {action} at time {t}')
+            if action == 1:
+                print(f'generator run at time {t}')
+                gen_was_run = True
+            # else:
+            #     print(f'.')
 
             states.append(f(s, action, t))
             total_reward += r(s, action)
@@ -194,27 +220,44 @@ def sim_rl():
         final_state = states[-1]
         total_reward += r(final_state, None)
         cumulative_reward[-1] = total_reward
-        print(f'reward from policy: {total_reward}')
+        print(f'total reward from policy: {total_reward}')
+        if not gen_was_run:
+            print(f'generator was never run')
 
         END_X = T
         x = range(END_X)
         pp.figure(1)
         pp.plot(x, [states[i].battery_charge for i in range(END_X)])
-        # pp.title('Battery SoC over Time - Lower bound 70%')
-        # pp.title('Battery SoC over Time - Lower bound 50%')
-        pp.title('Battery SoC over Time - Lower bound 25%')
-        # pp.title('Battery SoC over Time - Lower bound 70% and high demand')
+        pp.title('Battery SoC over Time')
         pp.xlabel('Time (10 min intervals)')
         pp.ylabel('Battery State of Charge (%)')
 
         pp.figure(2)
         pp.plot(x, cumulative_reward[0:END_X])
-        # pp.title('Cumulative Reward over Time - Lower bound 70%')
-        # pp.title('Cumulative Reward over Time - Lower bound 50%')
-        pp.title('Cumulative Reward over Time - Lower bound 25%')
-        # pp.title('Cumulative Reward over Time - Lower bound 70% and high demand')
+        pp.title('Cumulative Reward over Time')
         pp.xlabel('Time (10 min intervals)')
         pp.ylabel('Cumulative Reward')
+
+        pp.figure(3)
+        pp.plot(x, [V_TILDE(states[i]) for i in range(END_X)])
+        pp.title('v(s) over Time')
+        pp.xlabel('Time (10 min intervals)')
+        pp.ylabel('v(s)')
+
+        # value function with generator on/off, x axis is battery SoC
+        pp.figure(4)
+        states_gen_on, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=1)) for i in range(101)], c='r')
+        states_gen_off, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
+        pp.legend([states_gen_on, states_gen_off], ['Generator on', 'Generator off'])
+        pp.title('Value Function over SoC')
+        pp.xlabel('SoC (%)')
+        pp.ylabel('v(s)')
+
+        # pp.figure(5)
+        # pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
+        # pp.title('Value Function over SoC - Generator Off')
+        # pp.xlabel('SoC (%)')
+        # pp.ylabel('v(s)')
 
         # pp.figure(3)
         # pp.plot(x, [states[i].generation for i in range(end_x)])
@@ -227,7 +270,9 @@ def sim_rl():
 
 def r(s: State, a):
     reward = GENERATOR_REWARD if s.is_generator_on else 0
-    return reward + BAD_SOC_COST if s.battery_charge < 70 else reward
+    reward = reward + BAD_SOC_COST if s.battery_charge < 70 else reward
+    reward = reward + CRITICAL_SOC_COST if s.battery_charge < 20 else reward
+    return reward
 
 
 def f(s: State, a, t) -> State:
@@ -237,7 +282,10 @@ def f(s: State, a, t) -> State:
 
     percent_generation = (next_gen + (AVG_GENERATOR_OUTPUT if s.is_generator_on else 0)) / TOTAL_BATTERY_CAPACITY
     percent_usage = next_demand / TOTAL_BATTERY_CAPACITY
-    next_soc = s.battery_charge + percent_generation - percent_usage
+
+    next_soc = min(100, s.battery_charge + percent_generation - percent_usage)
+    if next_soc < 0:
+        next_soc = 0
 
     return State(next_soc, a, next_demand, next_gen, None, None)
 
@@ -266,4 +314,3 @@ def create_data_state_list(data_dict):
 
 if __name__ == '__main__':
     main()
-
