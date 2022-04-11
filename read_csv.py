@@ -73,10 +73,11 @@ def read_files():
     #         'demand': demand_df,
     #         'battery': battery_df}
     # 1008 rows is 7 days, 144 rows is 1 day
-    return {'renewable': powergen_df.iloc[0:1008],
-            'diesel': diesel_df.iloc[0:1008],
-            'demand': demand_df.iloc[0:1008],
-            'battery': battery_df.iloc[0:1008]}
+    endi = 1008
+    return {'renewable': powergen_df.iloc[0:endi],
+            'diesel': diesel_df.iloc[0:endi],
+            'demand': demand_df.iloc[0:endi],
+            'battery': battery_df.iloc[0:endi]}
 
 
 def print_df(df, name='df'):

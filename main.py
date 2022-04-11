@@ -1,5 +1,7 @@
 import random
 from enum import Enum, unique
+
+import keras.models
 import matplotlib.pyplot as pp
 import numpy as np
 import pandas as pd
@@ -7,11 +9,14 @@ from typing import Dict
 import tensorflow
 from keras import Model
 from keras import Sequential
+from keras.layers import Dense
+from keras.utils.np_utils import to_categorical
 from numpy import exp
 
 import read_csv
 
 T = 0
+data_dict = dict()
 
 GENERATOR_REWARD = -10
 BAD_SOC_COST = -1000
@@ -30,7 +35,21 @@ V_TILDE = 0
 feature_function = {
     "linear": lambda s: np.array(
         [1, s.is_generator_on, s.battery_charge * s.is_generator_on, s.battery_charge * (1 - s.is_generator_on)]),
-    "spline": lambda s: np.array(
+    "cubic_spline": lambda s: np.array(
+        [1, s.is_generator_on,
+         s.battery_charge * s.is_generator_on,
+         s.battery_charge * (1 - s.is_generator_on),
+         s.battery_charge ** 2,
+         s.battery_charge ** 3,
+         # max(0, s.battery_charge - 20) ** 3,
+         # max(0, s.battery_charge - 30) ** 3,
+         # max(0, s.battery_charge - 40) ** 3,
+         max(0, s.battery_charge - 50) ** 3,
+         max(0, s.battery_charge - 60) ** 3,
+         max(0, s.battery_charge - 70) ** 3,
+         max(0, s.battery_charge - 80) ** 3,
+         max(0, s.battery_charge - 90) ** 3]),
+    "linear_spline": lambda s: np.array(
         [1, s.is_generator_on,
          s.battery_charge * s.is_generator_on,
          s.battery_charge * (1 - s.is_generator_on),
@@ -111,12 +130,102 @@ def policy(s, t, policy):
     return int(ret)
 
 
+def init_nn():
+    model = Sequential()
+    model.add(Dense(2, activation='relu', input_dim=2))
+    # model.add(Dense(8, activation='relu'))
+    model.add(Dense(1))
+    model.compile(optimizer='adam', loss='mse', metrics=['mse'])
+    # model.summary()
+
+    pd.set_option('display.max_columns', None)
+
+    # create x, y for training
+    battery_df = data_dict['battery']
+    powergen_df = data_dict['renewable']
+    demand_df = data_dict['demand']
+    diesel_df = data_dict['diesel']
+
+    powergen_df2 = powergen_df.rename(columns={'Power (W)': 'gen Power (W)'})
+    demand_df2 = demand_df.rename(columns={'Power (W)': 'demand Power (W)'})
+    diesel_df2 = diesel_df.rename(columns={'Power (W)': 'diesel Power (W)'})
+
+    # map power > 0 to be 1 to represent on/off categorical
+    # using one hot encoding because it might be faster to train model?
+    onoff_df = pd.cut(diesel_df2['diesel Power (W)'], bins=[-1, 1, 999999], labels=[0, 1])
+    # print(f'onoff:\n{onoff_df}')
+    # encoded = to_categorical(onoff_df)
+    # print(f'encoded:\n{encoded}')
+    # diesel_df2.insert(2, 'generator on', encoded)
+    diesel_df2.insert(2, 'generator on', onoff_df)
+
+    # merge dfs to create one that is: soc | generation | demand | gen_on
+    tmp = pd.merge(battery_df, powergen_df2, on='Date', how='left')
+    tmp = pd.merge(tmp, demand_df2, on='Date', how='left')
+    x = pd.merge(tmp, diesel_df2, on='Date', how='left')
+    x.drop('Date', axis=1, inplace=True)
+    x.drop('gen Power (W)', axis=1, inplace=True)
+    x.drop('demand Power (W)', axis=1, inplace=True)
+    x.drop('diesel Power (W)', axis=1, inplace=True)
+    # x.rename(columns={'diesel Power (W)': 'generator on'}, inplace=True)
+    # print(f'x:\n{x.to_string()}')
+
+    y = pd.DataFrame(0.0, index=np.arange(x.shape[0]), columns=['value'])
+    # print(f'y:\n{y}')
+
+    # model.fit(x, y, epochs=100, batch_size=100, validation_split=0.2)
+    model.fit(x, y, verbose=0, epochs=1, steps_per_epoch=1)
+    return model, x, y
+
+
+def train_nn(nn, x, y, S_hat):
+    # calculate w and v_hat values for each state
+    for t in reversed(range(T - 1)):
+        percent_complete = ((T-1-t) / (T-1)*100)
+        if int(percent_complete*10) % 5 == 0:
+            print(f'starting iteration {T-1-t} out of {T - 1}: {percent_complete:.2f}% complete')
+        for state_index in range(len(S_hat)):
+            state: State = S_hat[state_index]
+            rewards_by_action = np.zeros([len(ACTIONS)])
+            for action in ACTIONS:
+                # compare possible actions and the reward from v_tilde  (phi@w) for next state
+                # rewards_by_action[action] = r(state, action) + phi(f(state, action, t)).T @ w[t + 1]
+
+                # use keras to approx next state
+                next_state = f(state, action, t)
+                next_state_df = pd.DataFrame([[next_state.battery_charge, next_state.is_generator_on]],
+                                        columns=['stateOfCharge (%)', 'generator on'])
+                v_approx = nn(next_state_df.values)[0][0]
+
+                # print(f'v_approx: {v_approx}')
+                rewards_by_action[action] = r(state, action) + v_approx
+
+            # store optimal value of each state in v_hat
+            y.at[state_index, 'value'] = np.max(rewards_by_action)
+            # v_hat[t][state_index] = np.max(rewards_by_action)
+
+        # calculate w by minimizing error between phi.T @ w and v_hat
+        # w[t] = np.linalg.lstsq(A, v_hat[t], rcond=0)[0]
+
+        # refit keras to predict value functions of next state
+        nn.fit(x, y, steps_per_epoch=1, epochs=1, verbose=0)
+        # print(f'ws {w[t]} at time {t}')
+
+    # use final weights
+    # w = w[0]
+    # print(f'\n\nfinal w: {w}\n\n')
+
+    # approximated value function
+    # v_tilde = lambda s: phi(s).T @ w
+    return nn
+
+
 def pvi_v_tilde(data_states):
     # amount of states to sample from data
     S_hat_size = 50
     # S_hat_size = int(len(data_states) / 10)
 
-    # TODO what is a good feature function? try RBF, linear spline
+    # nn, x, y = init_nn()
 
     phi = feature_function['rbf']
     # dimension of feature function
@@ -131,13 +240,16 @@ def pvi_v_tilde(data_states):
     # TODO make sample evenly spaced to get data from all times of month? this takes random values
     S_hat = random.sample(data_states, S_hat_size)
 
-    # for fitting model
+    # for minimizing error by least squares
     A = np.array([phi(s) for s in S_hat])
 
+    # nn = train_nn(nn, x, y, S_hat)
+    # nn = keras.models.load_model('trained_nn_1week')
     # calculate w and v_hat values for each state
     for t in reversed(range(T - 1)):
+        # print(f'starting iteration {T-1-t} out of {T - 1}: {((T-1-t) / (T-1)*100):.2f}% complete')
         for state_index in range(S_hat_size):
-            state = S_hat[state_index]
+            state: State = S_hat[state_index]
             rewards_by_action = np.zeros([len(ACTIONS)])
             for action in ACTIONS:
                 # compare possible actions and the reward from v_tilde  (phi@w) for next state
@@ -156,7 +268,9 @@ def pvi_v_tilde(data_states):
 
     # approximated value function
     v_tilde = lambda s: phi(s).T @ w
-    # v_tilde_v = np.vectorize(v_tilde)
+    # nn.save('trained_nn_epochtest')
+    # v_tilde = lambda s: \
+    #     nn(pd.DataFrame([[s.battery_charge, float(s.is_generator_on)]], columns=['stateOfCharge (%)', 'generator on']).values)[0][0]
     return v_tilde
 
 
@@ -185,7 +299,9 @@ def init_policy(policy_choice, data):
 
 
 def sim_rl():
-    data_dict: Dict[str, pd.DataFrame] = read_csv.read_files()
+    global data_dict
+    data_dict = read_csv.read_files()
+    # data_dict: Dict[str, pd.DataFrame] = read_csv.read_files()
     global T
     T = len(data_dict['demand']) - 1
     # len() - 1 because f() depends on next state from data
@@ -194,13 +310,13 @@ def sim_rl():
     data_states = create_data_state_list(data_dict)
 
     ###### choose policy here
-    policy_choice = Policy.PVI
+    policy_choice = Policy.GEN_WHEN_UNDER_70
     init_policy(policy_choice, data_states)
     #########################
 
     M = 1
     for m in range(M):
-        cumulative_reward = np.zeros([T])
+        cumulative_cost = np.zeros([T])
         total_reward = 0
         gen_was_run = False
         states = [State(100, False, 0, 0, None, None)]
@@ -209,17 +325,17 @@ def sim_rl():
 
             action = policy(s, t, policy_choice)
             if action == 1:
-                print(f'generator run at time {t}')
+                # print(f'generator run at time {t}')
                 gen_was_run = True
             # else:
             #     print(f'.')
 
             states.append(f(s, action, t))
             total_reward += r(s, action)
-            cumulative_reward[t] = total_reward
+            cumulative_cost[t] = -total_reward
         final_state = states[-1]
         total_reward += r(final_state, None)
-        cumulative_reward[-1] = total_reward
+        cumulative_cost[-1] = -total_reward
         print(f'total reward from policy: {total_reward}')
         if not gen_was_run:
             print(f'generator was never run')
@@ -233,25 +349,26 @@ def sim_rl():
         pp.ylabel('Battery State of Charge (%)')
 
         pp.figure(2)
-        pp.plot(x, cumulative_reward[0:END_X])
-        pp.title('Cumulative Reward over Time')
+        pp.plot(x, cumulative_cost[0:END_X])
+        pp.title('Cumulative Cost over Time')
         pp.xlabel('Time (10 min intervals)')
-        pp.ylabel('Cumulative Reward')
+        pp.ylabel('Cumulative Cost')
 
-        pp.figure(3)
-        pp.plot(x, [V_TILDE(states[i]) for i in range(END_X)])
-        pp.title('v(s) over Time')
-        pp.xlabel('Time (10 min intervals)')
-        pp.ylabel('v(s)')
+        if policy_choice == Policy.PVI:
+            pp.figure(3)
+            pp.plot(x, [V_TILDE(states[i]) for i in range(END_X)])
+            pp.title('v(s) over Time')
+            pp.xlabel('Time (10 min intervals)')
+            pp.ylabel('v(s)')
 
-        # value function with generator on/off, x axis is battery SoC
-        pp.figure(4)
-        states_gen_on, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=1)) for i in range(101)], c='r')
-        states_gen_off, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
-        pp.legend([states_gen_on, states_gen_off], ['Generator on', 'Generator off'])
-        pp.title('Value Function over SoC')
-        pp.xlabel('SoC (%)')
-        pp.ylabel('v(s)')
+            # value function with generator on/off, x axis is battery SoC
+            pp.figure(4)
+            states_gen_on, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=1)) for i in range(101)], c='r')
+            states_gen_off, = pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
+            pp.legend([states_gen_on, states_gen_off], ['Generator on', 'Generator off'])
+            pp.title('Value Function over SoC')
+            pp.xlabel('SoC (%)')
+            pp.ylabel('v(s)')
 
         # pp.figure(5)
         # pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
