@@ -173,13 +173,11 @@ def init_nn():
     y = pd.DataFrame(0.0, index=np.arange(x.shape[0]), columns=['value'])
     # print(f'y:\n{y}')
 
-    # model.fit(x, y, epochs=100, batch_size=100, validation_split=0.2)
     model.fit(x, y, verbose=0, epochs=1, steps_per_epoch=1)
     return model, x, y
 
 
 def train_nn(nn, x, y, S_hat):
-    # calculate w and v_hat values for each state
     for t in reversed(range(T - 1)):
         percent_complete = ((T-1-t) / (T-1)*100)
         if int(percent_complete*10) % 5 == 0:
@@ -188,10 +186,7 @@ def train_nn(nn, x, y, S_hat):
             state: State = S_hat[state_index]
             rewards_by_action = np.zeros([len(ACTIONS)])
             for action in ACTIONS:
-                # compare possible actions and the reward from v_tilde  (phi@w) for next state
-                # rewards_by_action[action] = r(state, action) + phi(f(state, action, t)).T @ w[t + 1]
-
-                # use keras to approx next state
+                # compare possible actions and the reward from v_tilde (nn prediction) for next state
                 next_state = f(state, action, t)
                 next_state_df = pd.DataFrame([[next_state.battery_charge, next_state.is_generator_on]],
                                         columns=['stateOfCharge (%)', 'generator on'])
@@ -200,23 +195,12 @@ def train_nn(nn, x, y, S_hat):
                 # print(f'v_approx: {v_approx}')
                 rewards_by_action[action] = r(state, action) + v_approx
 
-            # store optimal value of each state in v_hat
+            # update optimal value of each state in y df
             y.at[state_index, 'value'] = np.max(rewards_by_action)
-            # v_hat[t][state_index] = np.max(rewards_by_action)
-
-        # calculate w by minimizing error between phi.T @ w and v_hat
-        # w[t] = np.linalg.lstsq(A, v_hat[t], rcond=0)[0]
 
         # refit keras to predict value functions of next state
         nn.fit(x, y, steps_per_epoch=1, epochs=1, verbose=0)
-        # print(f'ws {w[t]} at time {t}')
 
-    # use final weights
-    # w = w[0]
-    # print(f'\n\nfinal w: {w}\n\n')
-
-    # approximated value function
-    # v_tilde = lambda s: phi(s).T @ w
     return nn
 
 
@@ -227,7 +211,7 @@ def pvi_v_tilde(data_states):
 
     # nn, x, y = init_nn()
 
-    phi = feature_function['rbf']
+    phi = feature_function['linear_spline']
     # dimension of feature function
     K = phi(State()).shape[0]
 
@@ -244,7 +228,7 @@ def pvi_v_tilde(data_states):
     A = np.array([phi(s) for s in S_hat])
 
     # nn = train_nn(nn, x, y, S_hat)
-    # nn = keras.models.load_model('trained_nn_1week')
+    # nn = keras.models.load_model('trained_nn')
     # calculate w and v_hat values for each state
     for t in reversed(range(T - 1)):
         # print(f'starting iteration {T-1-t} out of {T - 1}: {((T-1-t) / (T-1)*100):.2f}% complete')
@@ -264,7 +248,7 @@ def pvi_v_tilde(data_states):
 
     # use final weights
     w = w[0]
-    print(f'\n\nfinal w: {w}\n\n')
+    # print(f'\n\nfinal w: {w}\n\n')
 
     # approximated value function
     v_tilde = lambda s: phi(s).T @ w
@@ -298,6 +282,21 @@ def init_policy(policy_choice, data):
         pass
 
 
+# def avg_policy(battery_charge_col, policy_choice):
+#     # using given policy, return a list of the most likely action across all time steps
+#     SOC_STEPS = len(battery_charge_col)
+#     T_STEPS = 50
+#     policy_by_t = np.zeros([T_STEPS, SOC_STEPS])
+#     # for t in np.arange(0, T, T/T_STEPS):
+#     for t in np.trunc(np.linspace(0, T, T_STEPS)):
+#         for index, soc in enumerate(battery_charge_col):
+#             policy_by_t[t][index] = policy(State(SoC=soc), 0, policy_choice)
+#
+#     # average all 0/1 values across each time step, then round to map to 0 or 1
+#     avg_action = np.round(np.average(policy_by_t, axis=1))
+#     return avg_action
+
+
 def sim_rl():
     global data_dict
     data_dict = read_csv.read_files()
@@ -310,7 +309,7 @@ def sim_rl():
     data_states = create_data_state_list(data_dict)
 
     ###### choose policy here
-    policy_choice = Policy.GEN_WHEN_UNDER_70
+    policy_choice = Policy.PVI
     init_policy(policy_choice, data_states)
     #########################
 
@@ -370,11 +369,11 @@ def sim_rl():
             pp.xlabel('SoC (%)')
             pp.ylabel('v(s)')
 
-        # pp.figure(5)
-        # pp.plot(range(101), [V_TILDE(State(SoC=i, is_gen_on=0)) for i in range(101)], c='g')
-        # pp.title('Value Function over SoC - Generator Off')
-        # pp.xlabel('SoC (%)')
-        # pp.ylabel('v(s)')
+        # visualize policy
+        # battery_charge_col = np.arange(0, 105, 5)
+        # onoff_col = avg_policy(battery_charge_col, policy_choice)
+        # policy_df = pd.DataFrame(zip(battery_charge_col, onoff_col), columns=['battery charge (%)', 'on/off'])
+        # print(f'policy: \n\n {policy_df}')
 
         # pp.figure(3)
         # pp.plot(x, [states[i].generation for i in range(end_x)])
